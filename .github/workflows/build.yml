@@ -23,6 +23,36 @@ jobs:
           add=''.join('<uses-permission android:name=\"android.permission.%s\"/>'%n for n in names)
           open(p,'w').write(s.replace('</manifest>',add+'</manifest>'))
           "
+      - name: Generate ring sound
+        run: |
+          python3 - <<'PYEOF'
+          import wave, struct, math, os
+          sr = 22050
+          total = 28.0
+          buf = [0.0] * int(sr * total)
+          def bell(t0, f, amp=1.0):
+              n = int(sr * 0.7)
+              s0 = int(t0 * sr)
+              for i in range(n):
+                  if s0 + i >= len(buf): break
+                  t = i / sr
+                  env = min(1.0, t / 0.004) * math.exp(-4.5 * t)
+                  v = math.sin(2*math.pi*f*t) + 0.45*math.sin(2*math.pi*2*f*t) + 0.2*math.sin(2*math.pi*3*f*t)
+                  buf[s0 + i] += amp * env * v
+          seq = [784, 988, 1175, 1568, 1175, 988, 1175, 1568]
+          t = 0.0
+          while t < total - 1.0:
+              for i, f in enumerate(seq):
+                  bell(t + i * 0.2, f)
+              t += 2.6
+          peak = max(abs(x) for x in buf)
+          d = 'android/app/src/main/res/raw'
+          os.makedirs(d, exist_ok=True)
+          w = wave.open(d + '/alarm.wav', 'wb')
+          w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+          w.writeframes(b''.join(struct.pack('<h', int(x / peak * 32000)) for x in buf))
+          w.close()
+          PYEOF
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
